@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mathematics Battle - Cyber Bot Arena</title>
+  
+  <!-- MediaPipe Libraries for Hand Tracking -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;700&display=swap');
+
+    :root {
+      --p1-color: #00f0ff;
+      --p1-glow: rgba(0, 240, 255, 0.6);
+      --p2-color: #ff0055;
+      --p2-glow: rgba(255, 0, 85, 0.6);
+      --bg-dark: #060913;
+      --card-bg: rgba(10, 16, 32, 0.85);
+      --neon-yellow: #ffe600;
+      --neon-green: #00ff66;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: #fff;
+      font-family: 'Rajdhani', sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    /* Container & Video Canvas */
+    #game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: radial-gradient(circle at center, #101830 0%, #03050a 100%);
+    }
+
+    #webcam {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      opacity: 0.25;
+      z-index: 1;
+      filter: contrast(1.2) brightness(0.8) hue-rotate(180deg);
+    }
+
+    #game-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+    }
+
+    /* HUD Overlay Layer */
+    .hud-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 3;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 15px 25px;
+    }
+
+    /* Integrated Top Header HUD with Central Question Display */
+    .header-hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(4, 8, 20, 0.85);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      border-radius: 16px;
+      padding: 10px 25px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.8);
+      gap: 15px;
+    }
+
+    .player-stats {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      width: 28%;
+    }
+
+    .player-stats.p2 {
+      flex-direction: row-reverse;
+      text-align: right;
+    }
+
+    .avatar {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 2px solid;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 15px currentColor;
+      background: rgba(0,0,0,0.5);
+      flex-shrink: 0;
+    }
+
+    .p1 .avatar { color: var(--p1-color); border-color: var(--p1-color); }
+    .p2 .avatar { color: var(--p2-color); border-color: var(--p2-color); }
+
+    .bar-container {
+      flex-grow: 1;
+    }
+
+    .player-name {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .hp-bar-bg {
+      height: 14px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .hp-bar-fill {
+      height: 100%;
+      width: 100%;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .p1 .hp-bar-fill { background: linear-gradient(90deg, #0088ff, var(--p1-color)); box-shadow: 0 0 10px var(--p1-color); }
+    .p2 .hp-bar-fill { background: linear-gradient(90deg, #ff0055, #ff5500); box-shadow: 0 0 10px var(--p2-color); }
+
+    /* Central Question Display Panel */
+    .top-question-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(5, 12, 28, 0.95);
+      border: 2px solid var(--neon-yellow);
+      border-radius: 14px;
+      padding: 6px 30px;
+      box-shadow: 0 0 20px rgba(255, 230, 0, 0.3);
+      min-width: 280px;
+    }
+
+    .question-title {
+      font-size: 10px;
+      color: #7a8b9e;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .question-text {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #fff;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+    }
+
+    .center-timer {
+      text-align: center;
+      min-width: 80px;
+    }
+
+    .timer-val {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--neon-yellow);
+      text-shadow: 0 0 10px rgba(255, 230, 0, 0.7);
+    }
+
+    .timer-label {
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: #8a99ad;
+      text-transform: uppercase;
+    }
+
+    /* Large 3, 2, 1 Countdown Overlay Panel */
+    #countdown-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 15;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .countdown-num {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 140px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--neon-yellow), #ffffff, var(--p1-color));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 50px rgba(255, 230, 0, 0.8);
+      animation: pulseZoom 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.27) infinite;
+    }
+
+    .countdown-text {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 22px;
+      letter-spacing: 4px;
+      color: var(--p1-color);
+      text-shadow: 0 0 15px var(--p1-glow);
+    }
+
+    @keyframes pulseZoom {
+      0% { transform: scale(0.5); opacity: 0; }
+      50% { transform: scale(1.1); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Arena Player Labels */
+    .arena-labels {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 50px;
+      margin-top: 10px;
+    }
+
+    .arena-tag {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      letter-spacing: 2px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid;
+    }
+
+    .arena-tag.p1 { color: var(--p1-color); border-color: var(--p1-color); }
+    .arena-tag.p2 { color: var(--p2-color); border-color: var(--p2-color); }
+
+    /* Modals Overlay */
+    .modal-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(3, 5, 12, 0.92);
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      backdrop-filter: blur(12px);
+    }
+
+    .modal-card {
+      background: var(--card-bg);
+      border: 2px solid var(--p1-color);
+      box-shadow: 0 0 40px var(--p1-glow);
+      border-radius: 24px;
+      padding: 35px 45px;
+      max-width: 650px;
+      width: 90%;
+      text-align: center;
+    }
+
+    h1.game-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 38px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--p1-color), #fff, var(--p2-color));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    p.subtitle {
+      color: #a0aec0;
+      font-size: 16px;
+      margin-bottom: 25px;
+    }
+
+    .setup-group {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+
+    .setup-label {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      color: var(--p1-color);
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .btn-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .btn-opt {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #fff;
+      padding: 12px;
+      border-radius: 10px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-opt:hover, .btn-opt.active {
+      background: rgba(0, 240, 255, 0.2);
+      border-color: var(--p1-color);
+      box-shadow: 0 0 15px var(--p1-glow);
+      color: #fff;
+    }
+
+    .start-btn {
+      width: 100%;
+      padding: 18px;
+      margin-top: 15px;
+      background: linear-gradient(90deg, #00c6ff, #0072ff);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      cursor: pointer;
+      box-shadow: 0 0 25px rgba(0, 198, 255, 0.6);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .start-btn:hover {
+      transform: scale(1.02);
+      box-shadow: 0 0 35px rgba(0, 198, 255, 0.9);
+    }
+
+    /* Diagnostics Bar */
+    #cam-status {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 18px;
+      border-radius: 20px;
+      font-size: 12px;
+      color: var(--neon-yellow);
+      z-index: 100;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .cam-btn {
+      background: var(--p1-color);
+      border: none;
+      color: #000;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* Gesture Guide Banner */
+    .gesture-guide {
+      position: absolute;
+      bottom: 20px;
+      left: 25px;
+      right: 25px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .guide-box {
+      background: rgba(0,0,0,0.6);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div id="game-container">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="game-canvas"></canvas>
+
+    <div class="hud-layer">
+      <!-- Integrated Top HUD -->
+      <div class="header-hud">
+        <div class="player-stats p1">
+          <div class="avatar">🤖</div>
+          <div class="bar-container">
+            <div class="player-name">
+              <span>P1 CYBER-BLUE</span>
+              <span id="p1-score">0 PTS</span>
+            </div>
+            <div class="hp-bar-bg">
+              <div id="p1-hp" class="hp-bar-fill"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Central Top Mathematics Question Box -->
+        <div class="top-question-panel">
+          <div class="question-title">SOLVE TO ATTACK!</div>
+          <div class="question-text" id="math-question">READY...</div>
+        </div>
+
+        <div class="center-timer">
+          <div class="timer-val" id="round-timer">60</div>
+          <div class="timer-label">TIME LEFT</div>
+        </div>
+
+        <div class="player-stats p2">
+          <div class="avatar">👾</div>
+          <div class="bar-container">
+            <div class="player-name">
+              <span id="p2-score">0 PTS</span>
+              <span>P2 NITRO-RED</span>
+            </div>
+            <div class="hp-bar-bg">
+              <div id="p2-hp" class="hp-bar-fill"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arena-labels">
+        <div class="arena-tag p1">◀ P1 ARENA</div>
+        <div class="arena-tag p2">P2 ARENA ▶</div>
+      </div>
+
+      <div class="gesture-guide">
+        <div class="guide-box">
+          <span style="color:var(--p1-color)">PLAYER 1 (LEFT SIDE):</span><br/>
+          • ⚡ SWIPE / SLASH across your bubble<br/>
+          • 🤏 PINCH Index + Thumb to pop!
+        </div>
+        <div class="guide-box" style="text-align:right;">
+          <span style="color:var(--p2-color)">PLAYER 2 (RIGHT SIDE):</span><br/>
+          • ⚡ SWIPE / SLASH across your bubble<br/>
+          • 🤏 PINCH Index + Thumb to pop!
+        </div>
+      </div>
+    </div>
+
+    <!-- 3, 2, 1 Countdown Display Overlay -->
+    <div id="countdown-overlay" class="hidden">
+      <div class="countdown-num" id="countdown-num">3</div>
+      <div class="countdown-text">GET READY!</div>
+    </div>
+
+    <!-- Start Modal -->
+    <div class="modal-overlay" id="start-modal">
+      <div class="modal-card">
+        <h1 class="game-title">MATH BATTLE BOT</h1>
+        <p class="subtitle">Futuristic Dual-Player AI Cyber Arena</p>
+
+        <div class="setup-group">
+          <label class="setup-label">TARGET AGE / DIFFICULTY</label>
+          <div class="btn-grid" id="age-selector">
+            <button class="btn-opt active" data-age="7-10">7 - 10 YRS (Easy)</button>
+            <button class="btn-opt" data-age="11-14">11 - 14 YRS (Medium)</button>
+            <button class="btn-opt" data-age="15-17">15 - 17 YRS (Hard)</button>
+          </div>
+        </div>
+
+        <div class="setup-group">
+          <label class="setup-label">MATH OPERATIONS INCLUDED</label>
+          <div class="btn-grid" id="op-selector">
+            <button class="btn-opt active" data-op="all">ALL (+, -, ×, ÷)</button>
+            <button class="btn-opt" data-op="basic">+ / - ONLY</button>
+            <button class="btn-opt" data-op="multi">× / ÷ ONLY</button>
+          </div>
+        </div>
+
+        <button class="start-btn" id="btn-start-game">INITIALIZE BATTLE SYSTEM</button>
+      </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div class="modal-overlay hidden" id="gameover-modal">
+      <div class="modal-card">
+        <h1 class="game-title" id="winner-title">PLAYER 1 VICTORY!</h1>
+        <p class="subtitle" id="winner-sub">TOTAL DESTRUCTION IN THE ARENA</p>
+        <button class="start-btn" id="btn-restart">PLAY AGAIN</button>
+      </div>
+    </div>
+
+    <!-- Diagnostics Footer Strip -->
+    <div id="cam-status">
+      <span id="cam-msg">📷 Initializing Camera & AI Tracker...</span>
+      <button class="cam-btn" onclick="requestWebcam()">Retry Camera</button>
+    </div>
+  </div>
+
+  <script>
+    class SoundEngine {
+      constructor() { this.ctx = null; }
+      init() {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      playPop() {
+        if (!this.ctx) return;
+        let osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.1);
+      }
+      playBeep(high = false) {
+        if (!this.ctx) return;
+        let osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(high ? 880 : 440, this.ctx.currentTime);
+        gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.15);
+      }
+      playLaser() {
+        if (!this.ctx) return;
+        let osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(900, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.2);
+      }
+      playHit() {
+        if (!this.ctx) return;
+        let osc = this.ctx.createOscillator(), gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.25);
+        gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+        osc.connect(gain); gain.connect(this.ctx.destination);
+        osc.start(); osc.stop(this.ctx.currentTime + 0.25);
+      }
+    }
+    const sfx = new SoundEngine();
+
+    const config = { ageGroup: '7-10', opType: 'all', roundDuration: 60 };
+    const state = {
+      isPlaying: false,
+      isCountdown: false,
+      timer: 60,
+      timerInterval: null,
+      p1: { hp: 100, score: 0, hand: null, prevPos: null },
+      p2: { hp: 100, score: 0, hand: null, prevPos: null },
+      p1Bubbles: [],
+      p2Bubbles: [],
+      currentQuestion: null,
+      particles: [],
+      slashes: []
+    };
+
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const videoElement = document.getElementById('webcam');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    async function requestWebcam() {
+      const statusEl = document.getElementById('cam-msg');
+      statusEl.textContent = '📷 Requesting camera permission...';
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+        });
+        videoElement.srcObject = stream;
+        await videoElement.play();
+        statusEl.textContent = '🟢 Camera Active! Initializing Hand Tracking AI...';
+        statusEl.style.color = '#00ff66';
+        initMediaPipeHands();
+      } catch (err) {
+        statusEl.textContent = '⚠️ Webcam blocked/unavailable. Touch/Mouse Mode active!';
+        statusEl.style.color = '#ff9900';
+      }
+    }
+
+    let handsAI = null;
+    function initMediaPipeHands() {
+      if (typeof Hands === 'undefined') return;
+      handsAI = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      handsAI.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+      handsAI.onResults(onHandResults);
+
+      const cameraUtils = new Camera(videoElement, {
+        onFrame: async () => {
+          if (videoElement.readyState >= 2) await handsAI.send({ image: videoElement });
+        },
+        width: 1280, height: 720
+      });
+      cameraUtils.start();
+    }
+
+    function onHandResults(results) {
+      state.p1.hand = null;
+      state.p2.hand = null;
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        document.getElementById('cam-msg').textContent = `🟢 Tracking ${results.multiHandLandmarks.length} Hand(s)`;
+        results.multiHandLandmarks.forEach((landmarks) => {
+          const indexFinger = landmarks[8], thumbFinger = landmarks[4];
+          const x = (1 - indexFinger.x) * canvas.width;
+          const y = indexFinger.y * canvas.height;
+          const thumbX = (1 - thumbFinger.x) * canvas.width;
+          const thumbY = thumbFinger.y * canvas.height;
+
+          const isPinched = Math.hypot(x - thumbX, y - thumbY) < 45;
+
+          if (x < canvas.width / 2) {
+            state.p1.hand = { x, y, isPinched };
+            processGesture('p1', x, y, isPinched);
+          } else {
+            state.p2.hand = { x, y, isPinched };
+            processGesture('p2', x, y, isPinched);
+          }
+        });
+      }
+    }
+
+    function processGesture(playerKey, x, y, isPinched) {
+      if (!state.isPlaying || state.isCountdown) return;
+      const p = state[playerKey];
+      state.slashes.push({
+        x, y,
+        color: playerKey === 'p1' ? 'var(--p1-color)' : 'var(--p2-color)',
+        life: 1.0, player: playerKey
+      });
+
+      let velocity = 0;
+      if (p.prevPos) velocity = Math.hypot(x - p.prevPos.x, y - p.prevPos.y);
+      p.prevPos = { x, y };
+
+      if (velocity > 35 || isPinched) {
+        checkBubbleHit(playerKey, x, y);
+      }
+    }
+
+    // Trigger Countdown Sequence before spawning new question
+    function triggerQuestionCountdown() {
+      state.isCountdown = true;
+      state.p1Bubbles = [];
+      state.p2Bubbles = [];
+
+      const countdownOverlay = document.getElementById('countdown-overlay');
+      const countdownNum = document.getElementById('countdown-num');
+      countdownOverlay.classList.remove('hidden');
+
+      let currentNum = 3;
+      countdownNum.textContent = currentNum;
+      sfx.playBeep(false);
+
+      const countInterval = setInterval(() => {
+        currentNum--;
+        if (currentNum > 0) {
+          countdownNum.textContent = currentNum;
+          sfx.playBeep(false);
+        } else if (currentNum === 0) {
+          countdownNum.textContent = 'GO!';
+          sfx.playBeep(true);
+        } else {
+          clearInterval(countInterval);
+          countdownOverlay.classList.add('hidden');
+          state.isCountdown = false;
+          generateQuestion();
+        }
+      }, 800);
+    }
+
+    function generateQuestion() {
+      let n1, n2, op, answer;
+      const ops = [];
+      if (config.opType === 'basic') ops.push('+', '-');
+      else if (config.opType === 'multi') ops.push('×', '÷');
+      else ops.push('+', '-', '×', '÷');
+
+      op = ops[Math.floor(Math.random() * ops.length)];
+
+      if (config.ageGroup === '7-10') {
+        if (op === '+') { n1 = rand(1, 20); n2 = rand(1, 20); answer = n1 + n2; }
+        else if (op === '-') { n1 = rand(5, 25); n2 = rand(1, n1); answer = n1 - n2; }
+        else if (op === '×') { n1 = rand(1, 10); n2 = rand(1, 5); answer = n1 * n2; }
+        else { n2 = rand(1, 5); answer = rand(1, 5); n1 = n2 * answer; }
+      } else if (config.ageGroup === '11-14') {
+        if (op === '+') { n1 = rand(10, 80); n2 = rand(10, 80); answer = n1 + n2; }
+        else if (op === '-') { n1 = rand(20, 100); n2 = rand(1, n1); answer = n1 - n2; }
+        else if (op === '×') { n1 = rand(2, 12); n2 = rand(2, 12); answer = n1 * n2; }
+        else { n2 = rand(2, 10); answer = rand(2, 12); n1 = n2 * answer; }
+      } else {
+        if (op === '+') { n1 = rand(50, 200); n2 = rand(50, 200); answer = n1 + n2; }
+        else if (op === '-') { n1 = rand(50, 250); n2 = rand(10, n1); answer = n1 - n2; }
+        else if (op === '×') { n1 = rand(5, 20); n2 = rand(4, 15); answer = n1 * n2; }
+        else { n2 = rand(3, 15); answer = rand(4, 20); n1 = n2 * answer; }
+      }
+
+      state.currentQuestion = { text: `${n1} ${op} ${n2} = ?`, answer };
+      document.getElementById('math-question').textContent = state.currentQuestion.text;
+
+      spawnDualBubbles(answer);
+    }
+
+    function rand(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+    function spawnDualBubbles(correctAnswer) {
+      const options = [correctAnswer];
+      while (options.length < 4) {
+        let wrong = correctAnswer + rand(-10, 10);
+        if (wrong !== correctAnswer && wrong >= 0 && !options.includes(wrong)) {
+          options.push(wrong);
+        }
+      }
+
+      const p1Opts = [...options].sort(() => Math.random() - 0.5);
+      const p2Opts = [...options].sort(() => Math.random() - 0.5);
+
+      const bubbleRadius = 45;
+      const midX = canvas.width / 2;
+
+      // Create Player 1 Bubbles (Left Side)
+      state.p1Bubbles = p1Opts.map((val, idx) => {
+        const segWidth = (midX - 100) / 4;
+        return {
+          x: 50 + segWidth * idx + segWidth / 2,
+          y: canvas.height * 0.48 + (idx % 2 === 0 ? -40 : 40),
+          vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5,
+          radius: bubbleRadius, value: val, isCorrect: val === correctAnswer,
+          color: '#00f0ff'
+        };
+      });
+
+      // Create Player 2 Bubbles (Right Side)
+      state.p2Bubbles = p2Opts.map((val, idx) => {
+        const segWidth = (midX - 100) / 4;
+        return {
+          x: midX + 50 + segWidth * idx + segWidth / 2,
+          y: canvas.height * 0.48 + (idx % 2 === 0 ? -40 : 40),
+          vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5,
+          radius: bubbleRadius, value: val, isCorrect: val === correctAnswer,
+          color: '#ff0055'
+        };
+      });
+    }
+
+    function checkBubbleHit(playerKey, x, y) {
+      const bubbleList = playerKey === 'p1' ? state.p1Bubbles : state.p2Bubbles;
+
+      bubbleList.forEach((b, idx) => {
+        const dist = Math.hypot(b.x - x, b.y - y);
+        if (dist < b.radius) {
+          createExplosion(b.x, b.y, b.isCorrect ? '#00ff66' : '#ff0055');
+
+          if (b.isCorrect) {
+            sfx.playLaser();
+            const oppKey = playerKey === 'p1' ? 'p2' : 'p1';
+            state[oppKey].hp = Math.max(0, state[oppKey].hp - 20);
+            state[playerKey].score += 100;
+            
+            updateHUD();
+
+            if (state[oppKey].hp <= 0) {
+              endGame(playerKey);
+            } else {
+              triggerQuestionCountdown();
+            }
+          } else {
+            sfx.playHit();
+            state[playerKey].hp = Math.max(0, state[playerKey].hp - 10);
+            updateHUD();
+            bubbleList.splice(idx, 1);
+
+            if (state[playerKey].hp <= 0) {
+              endGame(playerKey === 'p1' ? 'p2' : 'p1');
+            }
+          }
+        }
+      });
+    }
+
+    function createExplosion(x, y, color) {
+      sfx.playPop();
+      for (let i = 0; i < 20; i++) {
+        state.particles.push({
+          x, y, vx: (Math.random() - 0.5) * 12, vy: (Math.random() - 0.5) * 12,
+          radius: Math.random() * 5 + 2, color, life: 1.0
+        });
+      }
+    }
+
+    function updateHUD() {
+      document.getElementById('p1-hp').style.width = state.p1.hp + '%';
+      document.getElementById('p2-hp').style.width = state.p2.hp + '%';
+      document.getElementById('p1-score').textContent = state.p1.score + ' PTS';
+      document.getElementById('p2-score').textContent = state.p2.score + ' PTS';
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Arena Divider
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.2)';
+      ctx.setLineDash([10, 10]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(canvas.width / 2, 0);
+      ctx.lineTo(canvas.width / 2, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Render Bubbles Function
+      const drawBubbles = (bubbles, boundsMinX, boundsMaxX) => {
+        bubbles.forEach(b => {
+          b.x += b.vx; b.y += b.vy;
+
+          if (b.x - b.radius < boundsMinX || b.x + b.radius > boundsMaxX) b.vx *= -1;
+          if (b.y - b.radius < 120 || b.y + b.radius > canvas.height - 80) b.vy *= -1;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(10, 25, 50, 0.85)';
+          ctx.shadowColor = b.color;
+          ctx.shadowBlur = 15;
+          ctx.fill();
+          ctx.strokeStyle = b.color;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          ctx.font = '900 26px Orbitron';
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(b.value, b.x, b.y);
+          ctx.restore();
+        });
+      };
+
+      if (!state.isCountdown) {
+        drawBubbles(state.p1Bubbles, 20, canvas.width / 2 - 20);
+        drawBubbles(state.p2Bubbles, canvas.width / 2 + 20, canvas.width - 20);
+      }
+
+      // Particles
+      state.particles.forEach((p, idx) => {
+        p.x += p.vx; p.y += p.vy; p.life -= 0.03;
+        if (p.life <= 0) state.particles.splice(idx, 1);
+        else {
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+          ctx.fillStyle = p.color; ctx.globalAlpha = p.life; ctx.fill(); ctx.globalAlpha = 1.0;
+        }
+      });
+
+      // Hand Cursor Slashes
+      state.slashes.forEach((s, idx) => {
+        s.life -= 0.08;
+        if (s.life <= 0) state.slashes.splice(idx, 1);
+        else {
+          ctx.beginPath(); ctx.arc(s.x, s.y, 8 * s.life, 0, Math.PI * 2);
+          ctx.fillStyle = s.color; ctx.fill();
+        }
+      });
+
+      ['p1', 'p2'].forEach(pKey => {
+        const hand = state[pKey].hand;
+        if (hand) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(hand.x, hand.y, hand.isPinched ? 12 : 18, 0, Math.PI * 2);
+          ctx.fillStyle = pKey === 'p1' ? 'rgba(0, 240, 255, 0.5)' : 'rgba(255, 0, 85, 0.5)';
+          ctx.strokeStyle = pKey === 'p1' ? '#00f0ff' : '#ff0055';
+          ctx.lineWidth = 3; ctx.shadowBlur = 18; ctx.shadowColor = ctx.strokeStyle;
+          ctx.fill(); ctx.stroke(); ctx.restore();
+        }
+      });
+
+      requestAnimationFrame(render);
+    }
+
+    // Touch / Mouse Support
+    window.addEventListener('mousemove', (e) => {
+      sfx.init();
+      const x = e.clientX, y = e.clientY;
+      const playerKey = x < canvas.width / 2 ? 'p1' : 'p2';
+      state[playerKey].hand = { x, y, isPinched: false };
+      processGesture(playerKey, x, y, false);
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      sfx.init();
+      const x = e.clientX, y = e.clientY;
+      const playerKey = x < canvas.width / 2 ? 'p1' : 'p2';
+      if (state.isPlaying && !state.isCountdown) {
+        checkBubbleHit(playerKey, x, y);
+      }
+    });
+
+    function startGame() {
+      sfx.init();
+      state.isPlaying = true;
+      state.p1.hp = 100; state.p2.hp = 100;
+      state.p1.score = 0; state.p2.score = 0;
+      state.timer = config.roundDuration;
+
+      updateHUD();
+      document.getElementById('start-modal').classList.add('hidden');
+      document.getElementById('gameover-modal').classList.add('hidden');
+
+      triggerQuestionCountdown();
+
+      clearInterval(state.timerInterval);
+      state.timerInterval = setInterval(() => {
+        if (!state.isCountdown) {
+          state.timer--;
+          document.getElementById('round-timer').textContent = state.timer;
+          if (state.timer <= 0) {
+            clearInterval(state.timerInterval);
+            if (state.p1.hp > state.p2.hp) endGame('p1');
+            else if (state.p2.hp > state.p1.hp) endGame('p2');
+            else endGame('draw');
+          }
+        }
+      }, 1000);
+    }
+
+    function endGame(winner) {
+      state.isPlaying = false;
+      clearInterval(state.timerInterval);
+
+      const winTitle = document.getElementById('winner-title');
+      const winSub = document.getElementById('winner-sub');
+
+      if (winner === 'p1') {
+        winTitle.textContent = 'PLAYER 1 VICTORY!';
+        winTitle.style.color = 'var(--p1-color)';
+        winSub.textContent = `CYBER-BLUE DOMINATED WITH ${state.p1.score} PTS!`;
+      } else if (winner === 'p2') {
+        winTitle.textContent = 'PLAYER 2 VICTORY!';
+        winTitle.style.color = 'var(--p2-color)';
+        winSub.textContent = `NITRO-RED DOMINATED WITH ${state.p2.score} PTS!`;
+      } else {
+        winTitle.textContent = 'DRAW / TIE BATTLE!';
+        winSub.textContent = 'BOTH BOTS MATCHED EQUAL POWER!';
+      }
+
+      document.getElementById('gameover-modal').classList.remove('hidden');
+    }
+
+    document.querySelectorAll('#age-selector .btn-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#age-selector .btn-opt').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        config.ageGroup = btn.dataset.age;
+      });
+    });
+
+    document.querySelectorAll('#op-selector .btn-opt').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#op-selector .btn-opt').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        config.opType = btn.dataset.op;
+      });
+    });
+
+    document.getElementById('btn-start-game').addEventListener('click', startGame);
+    document.getElementById('btn-restart').addEventListener('click', startGame);
+
+    requestWebcam();
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>
